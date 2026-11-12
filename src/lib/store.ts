@@ -19,10 +19,59 @@ export interface Store {
   clearLogs(): Promise<void>;
 }
 
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const anon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const clean = (v: unknown) => String(v ?? "").trim().replace(/^["']|["']$/g, "").trim();
 
-export const supabase: SupabaseClient | null = url && anon ? createClient(url, anon) : null;
+/** Accepts common copy/paste variants of the project URL and returns https://<ref>.supabase.co. */
+export function normalizeSupabaseUrl(raw: string): string {
+  let v = clean(raw);
+  if (!v) return "";
+  const dash = v.match(/supabase\.com\/dashboard\/project\/([a-z0-9]+)/i);
+  if (dash) return `https://${dash[1].toLowerCase()}.supabase.co`;
+  if (!/^https?:\/\//i.test(v)) v = "https://" + v;
+  try {
+    return new URL(v).origin;
+  } catch {
+    return "";
+  }
+}
+
+/** Returns a plain-English problem with the configured values, or "" if they look fine. */
+export function checkConfig(rawUrl: string, rawKey: string): string {
+  const u = clean(rawUrl);
+  const k = clean(rawKey);
+  if (!u && !k) return "";
+  if (!u) return "VITE_SUPABASE_URL is missing in Vercel.";
+  if (!k) return "VITE_SUPABASE_ANON_KEY is missing in Vercel.";
+  if (/^(sb_|eyJ)/.test(u) || /^https?:|supabase\.co/i.test(k))
+    return "The two values look swapped: VITE_SUPABASE_URL should be the https://….supabase.co address and VITE_SUPABASE_ANON_KEY the long key.";
+  if (/^sb_secret_/.test(k)) return "VITE_SUPABASE_ANON_KEY is the secret key. Use the publishable (or anon public) key instead, and rotate the secret key in Supabase.";
+  if (/^eyJ/.test(k)) {
+    try {
+      if (JSON.parse(atob(k.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).role === "service_role")
+        return "VITE_SUPABASE_ANON_KEY is the service_role key. Use the anon public key instead, and rotate the service_role key in Supabase.";
+    } catch {
+      /* not a JWT we can read; let Supabase judge it */
+    }
+  } else if (!/^sb_publishable_/.test(k)) return "VITE_SUPABASE_ANON_KEY doesn't look like a Supabase key (it should start with sb_publishable_ or eyJ).";
+  const n = normalizeSupabaseUrl(u);
+  if (!n) return `VITE_SUPABASE_URL "${u}" isn't a web address. It should look like https://abcdefgh.supabase.co`;
+  if (!/\.supabase\.co$/i.test(new URL(n).hostname)) return `VITE_SUPABASE_URL "${u}" should look like https://abcdefgh.supabase.co (from Supabase → Project Settings → Data API).`;
+  return "";
+}
+
+const rawUrl = String(import.meta.env.VITE_SUPABASE_URL ?? "");
+const rawKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY ?? "");
+
+export let configError = checkConfig(rawUrl, rawKey);
+let client: SupabaseClient | null = null;
+if (!configError && clean(rawUrl) && clean(rawKey)) {
+  try {
+    client = createClient(normalizeSupabaseUrl(rawUrl), clean(rawKey));
+  } catch (e) {
+    configError = "Couldn't connect to Supabase: " + (e as Error).message;
+  }
+}
+export const supabase: SupabaseClient | null = client;
 
 const empty = (): LogData => ({ days: {}, sessions: {}, tests: {} });
 

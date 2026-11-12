@@ -1,12 +1,35 @@
 import { useEffect, useState } from "react";
 import type { Session as AuthSession } from "@supabase/supabase-js";
-import { cloudStore, demoStore, supabase, type Store } from "./lib/store";
+import { cloudStore, configError, demoStore, supabase, type Store } from "./lib/store";
 import type { Profile } from "./lib/types";
 import SignIn from "./components/SignIn";
 import Intake from "./components/Intake";
 import Dashboard from "./components/Dashboard";
 
 export default function App() {
+  if (configError) return <SetupProblem message={configError} />;
+  return <Main />;
+}
+
+export function SetupProblem({ message }: { message: string }) {
+  return (
+    <div className="wrap narrow">
+      <div className="brand">
+        <img src="/icon.svg" alt="" width={36} height={36} />
+        <h1>Training Hub</h1>
+      </div>
+      <div className="card">
+        <h2>Setup problem</h2>
+        <p className="err">{message}</p>
+        <p className="muted">
+          Fix it in Vercel → your project → Settings → Environment Variables, then go to Deployments and redeploy the latest one.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Main() {
   const [auth, setAuth] = useState<AuthSession | null | undefined>(supabase ? undefined : null);
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
   const [editing, setEditing] = useState(false);
