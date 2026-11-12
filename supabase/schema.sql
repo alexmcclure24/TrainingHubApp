@@ -22,3 +22,8 @@ create policy "own rows: read"   on public.entries for select using (auth.uid() 
 create policy "own rows: insert" on public.entries for insert with check (auth.uid() = user_id);
 create policy "own rows: update" on public.entries for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "own rows: delete" on public.entries for delete using (auth.uid() = user_id);
+
+-- Newer Supabase projects don't expose new tables automatically.
+-- Signed-in users get table access; the policies above still limit them to their own rows.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on table public.entries to authenticated;
